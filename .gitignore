@@ -1,0 +1,3 @@
+*.exe
+out
+files/assembly.s
