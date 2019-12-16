@@ -9,6 +9,15 @@ func (p *Program) String() string {
 	return "Program"
 }
 
+func (ds DeclStatement) statementNode()       {}
+func (ds DeclStatement) TokenLiteral() string { return "DeclStatement" }
+
+func (es ExpStatement) statementNode()       {}
+func (es ExpStatement) TokenLiteral() string { return "ExpStatement" }
+
+func (ae AssignExpression) expressionNode()      {}
+func (ae AssignExpression) TokenLiteral() string { return "AssignExpression" }
+
 func (fs FunctionStatement) statementNode()       {}
 func (fs FunctionStatement) TokenLiteral() string { return "FunctionStatement" }
 
@@ -26,6 +35,9 @@ func (pe PrefixExpression) TokenLiteral() string { return "PrefixExpression" }
 
 func (ie InfixExpression) expressionNode()      {}
 func (ie InfixExpression) TokenLiteral() string { return "InfixExpression" }
+
+func (i Identifier) expressionNode()      {}
+func (i Identifier) TokenLiteral() string { return "Identifier" }
 
 func NewProgram(funcs, stmts Attrib) (*Program, error) {
 	s, ok := stmts.([]Statement)
@@ -67,6 +79,52 @@ func NewReturnStatement(exp Attrib) (Statement, error) {
 	return &ReturnStatement{ReturnValue: e}, nil
 }
 
+func NewDeclStatement(varType, left, right Attrib) (Statement, error) {
+	t, ok := varType.(*lexer.Token)
+	if !ok {
+		return nil, fmt.Errorf("NewDeclStatement", "*lexer.Token", "varType", varType)
+	}
+	l, ok := left.(*lexer.Token)
+	if !ok {
+		return nil, fmt.Errorf("NewDeclStatement", "*lexer.Token", "left", left)
+	}
+	id := Identifier{Token: l, Value: string(l.Value)}
+	stmt := &DeclStatement{Token: t, Left: id, Type: string(t.Value)}
+	if right == nil {
+		return stmt, nil
+	}
+	r, ok := right.(Expression)
+	if !ok {
+		return nil, fmt.Errorf("NewDeclStatement", "Expression", "right", right)
+	}
+	stmt.Right = r
+	return stmt, nil
+}
+
+func NewAssignExpression(left, right Attrib) (Expression, error) {
+	l, ok := left.(*lexer.Token)
+	if !ok {
+		return nil, fmt.Errorf("NewAssignStatement", "*lexer.Token", "left", left)
+	}
+	r, ok := right.(Expression)
+	if !ok {
+		return nil, fmt.Errorf("NewAssignStatement", "Expression", "right", right)
+	}
+	return &AssignExpression{Token: l, Left: Identifier{Token: l, Value: string(l.Value)}, Right: r}, nil
+}
+
+func NewIdentifier(id *lexer.Token) Expression {
+	return &Identifier{Token: id, Value: string(id.Value)}
+}
+
+func NewExpStatement(exp Attrib) (Statement, error) {
+	e, ok := exp.(Expression)
+	if !ok {
+		return nil, fmt.Errorf("NewExpStatement", "Expression", "exp", exp)
+	}
+	return &ExpStatement{Expression: e}, nil
+}
+
 func NewIntegerLiteral(integer Attrib) (*IntegerLiteral, error) {
 	intLit, ok := integer.(*lexer.Token)
 	if !ok {
@@ -82,7 +140,7 @@ func NewPrefixExpression(operator, expression Attrib) (*PrefixExpression, error)
 	}
 	exp, ok := expression.(Expression)
 	if !ok {
-		return nil, fmt.Errorf("NewPrefixExpression", "*lexer.Token", "expression", expression)
+		return nil, fmt.Errorf("NewPrefixExpression", "Expression", "expression", expression)
 	}
 	return &PrefixExpression{Operator: string(op.Value), Expression: exp}, nil
 }

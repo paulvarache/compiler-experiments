@@ -33,10 +33,22 @@ type Identifier struct {
 	Value string       `json:"value"`
 }
 
-type AssignStatement struct {
+type DeclStatement struct {
 	Token *lexer.Token `json:"-"`
 	Left  Identifier   `json:"left"`
 	Right Expression   `json:"right"`
+	Type  string       `json:"type"`
+}
+
+type AssignExpression struct {
+	Token *lexer.Token `json:"-"`
+	Left  Identifier   `json:"left"`
+	Right Expression   `json:"right"`
+}
+
+type ExpStatement struct {
+	Token      *lexer.Token `json:"-"`
+	Expression Expression   `json:"expression"`
 }
 
 type FunctionStatement struct {

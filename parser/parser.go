@@ -37,7 +37,7 @@ func (p *Parser) NextValidToken() (*lexer.Token, error) {
 
 // ParseReturnStatement will return a Statement from a set of tokens
 // It follows this grammar
-// <return_statement> ::= "return" <exp>
+// <return_statement> ::= "return" <exp> ";"
 func (p *Parser) ParseReturnStatement(tokens []*lexer.Token) (ast.Statement, error) {
 	exp, _, err := p.ParseExpression(tokens)
 	if err != nil {
@@ -48,6 +48,46 @@ func (p *Parser) ParseReturnStatement(tokens []*lexer.Token) (ast.Statement, err
 		return nil, err
 	}
 	return stmt, nil
+}
+
+// ParseExpressionStatement will return a Statement from a set of tokens
+// It follows this grammar
+// <expression_statement> ::= <exp> ";"
+func (p *Parser) ParseExpressionStatement(tokens []*lexer.Token) (ast.Statement, error) {
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("Expected expression, got nothing")
+	}
+	exp, tokens, err := p.ParseExpression(tokens)
+	if err != nil {
+		return nil, err
+	}
+	return ast.NewExpStatement(exp)
+}
+
+// ParseDeclStatement will return a Statement from a set of tokens
+// It follows this grammar
+// <decl_statement> ::= "int" <id> [ = <exp> ] ";"
+func (p *Parser) ParseDeclStatement(tokens []*lexer.Token) (ast.Statement, error) {
+	tType, tokens := tokens[0], tokens[1:]
+	if tType.Type != lexer.IdentifierToken {
+		return nil, fmt.Errorf("Expected identifier, got '%s'", tType.Value)
+	}
+	tName, tokens := tokens[0], tokens[1:]
+	if tName.Type != lexer.IdentifierToken {
+		return nil, fmt.Errorf("Expected identifier, got '%s'", tName.Value)
+	}
+	if len(tokens) == 0 {
+		return ast.NewDeclStatement(tType, tName, nil)
+	}
+	t, tokens := tokens[0], tokens[1:]
+	if string(t.Value) != "=" {
+		return nil, fmt.Errorf("Expected '=' got '%s'", t.Value)
+	}
+	exp, tokens, err := p.ParseExpression(tokens)
+	if err != nil {
+		return nil, err
+	}
+	return ast.NewDeclStatement(tType, tName, exp)
 }
 
 // ParseStatement will return the correct Statement for the tokens to follow
@@ -71,7 +111,8 @@ func (p *Parser) ParseStatement(t *lexer.Token) (ast.Statement, error) {
 	if t.Type != lexer.IdentifierToken {
 		return nil, fmt.Errorf("Parse error, %s, %s", string(t.Value), t.Type)
 	}
-	if string(t.Value) == "return" {
+	id := string(t.Value)
+	if id == "return" {
 		// Return statement detected, remove the "return" token and parse the rest
 		tokens = tokens[1:]
 		s, err := p.ParseReturnStatement(tokens)
@@ -79,8 +120,18 @@ func (p *Parser) ParseStatement(t *lexer.Token) (ast.Statement, error) {
 			return nil, err
 		}
 		stmt = s
+	} else if id == "int" {
+		s, err := p.ParseDeclStatement(tokens)
+		if err != nil {
+			return nil, err
+		}
+		stmt = s
 	} else {
-		return nil, fmt.Errorf("Statement not supported", string(t.Value))
+		s, err := p.ParseExpressionStatement(tokens)
+		if err != nil {
+			return nil, err
+		}
+		stmt = s
 	}
 	return stmt, nil
 }

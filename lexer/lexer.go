@@ -84,7 +84,7 @@ func (l *Lexer) Next() *Token {
 		l.state = ExprState
 		l.r.Move(1)
 		tt = PunctuatorToken
-	case '-', '!', '+', '*', '%':
+	case '-', '!', '+', '*', '%', '&', '|', '=', '<', '>':
 		if l.consumePunctuatorToken() {
 			l.state = ExprState
 			tt = PunctuatorToken
@@ -135,8 +135,23 @@ func (l *Lexer) Next() *Token {
 
 func (l *Lexer) consumePunctuatorToken() bool {
 	c := l.r.Peek(0)
-	if c == '!' || c == '-' || c == '*' || c == '+' || c == '/' || c == '%' {
+	if c == '!' || c == '=' || c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '&' || c == '|' || c == '^' {
 		l.r.Move(1)
+		if l.r.Peek(0) == '=' {
+			l.r.Move(1)
+		} else if (c == '+' || c == '-' || c == '&' || c == '|') && l.r.Peek(0) == c {
+			l.r.Move(1)
+		} else if c == '=' && l.r.Peek(0) == '>' {
+			l.r.Move(1)
+		}
+	} else { // c == '<' || c == '>'
+		l.r.Move(1)
+		if l.r.Peek(0) == c { // >> or <<
+			l.r.Move(1)
+		}
+		if l.r.Peek(0) == '=' { // >= or <=
+			l.r.Move(1)
+		}
 	}
 	return true
 }
