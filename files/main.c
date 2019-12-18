@@ -1,3 +1,6 @@
 int main() {
-    return 5;
+    int a = 8;
+    int b = 7;
+    if (a <= b) return a else return b;
+    return b;
 }

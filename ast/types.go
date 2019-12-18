@@ -41,9 +41,10 @@ type DeclStatement struct {
 }
 
 type AssignExpression struct {
-	Token *lexer.Token `json:"-"`
-	Left  Identifier   `json:"left"`
-	Right Expression   `json:"right"`
+	Token    *lexer.Token `json:"-"`
+	Operator string       `json:"operator"`
+	Left     Identifier   `json:"left"`
+	Right    Expression   `json:"right"`
 }
 
 type ExpStatement struct {
@@ -72,6 +73,12 @@ type ReturnStatement struct {
 type BlockStatement struct {
 	Token      *lexer.Token `json:"-"`
 	Statements []Statement  `json:"statements"`
+}
+
+type IfStatement struct {
+	Condition Expression `json:"condition"`
+	Body      Statement  `json:"statement"`
+	ElseBody  Statement  `json:"else"`
 }
 
 type IntegerLiteral struct {

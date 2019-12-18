@@ -10,18 +10,38 @@ import (
 
 // Parser holds the Lexer to generate the AST
 type Parser struct {
-	l *lexer.Lexer
+	l           *lexer.Lexer
+	TokenBuffer []*lexer.Token
 }
 
 // NewParser creates a new parser
-func NewParser(lexer *lexer.Lexer) *Parser {
+func NewParser(l *lexer.Lexer) *Parser {
 	return &Parser{
-		l: lexer,
+		l:           l,
+		TokenBuffer: make([]*lexer.Token, 0),
 	}
+}
+
+func (p *Parser) PeekNextValidToken() (*lexer.Token, error) {
+	if len(p.TokenBuffer) != 0 {
+		t := p.TokenBuffer[0]
+		return t, nil
+	}
+	t, err := p.NextValidToken()
+	if err != nil {
+		return nil, err
+	}
+	p.TokenBuffer = append([]*lexer.Token{t}, p.TokenBuffer...)
+	return t, nil
 }
 
 // NextValidToken finds the next non whitespace or line return token
 func (p *Parser) NextValidToken() (*lexer.Token, error) {
+	if len(p.TokenBuffer) != 0 {
+		t := p.TokenBuffer[0]
+		p.TokenBuffer = p.TokenBuffer[1:]
+		return t, nil
+	}
 	for {
 		t := p.l.Next()
 		err := p.l.Err()
@@ -38,7 +58,11 @@ func (p *Parser) NextValidToken() (*lexer.Token, error) {
 // ParseReturnStatement will return a Statement from a set of tokens
 // It follows this grammar
 // <return_statement> ::= "return" <exp> ";"
-func (p *Parser) ParseReturnStatement(tokens []*lexer.Token) (ast.Statement, error) {
+func (p *Parser) ParseReturnStatement(token *lexer.Token) (ast.Statement, error) {
+	tokens, err := p.GetTokensUntil(";", false)
+	if err != nil {
+		return nil, err
+	}
 	exp, _, err := p.ParseExpression(tokens)
 	if err != nil {
 		return nil, err
@@ -53,10 +77,13 @@ func (p *Parser) ParseReturnStatement(tokens []*lexer.Token) (ast.Statement, err
 // ParseExpressionStatement will return a Statement from a set of tokens
 // It follows this grammar
 // <expression_statement> ::= <exp> ";"
-func (p *Parser) ParseExpressionStatement(tokens []*lexer.Token) (ast.Statement, error) {
-	if len(tokens) == 0 {
-		return nil, fmt.Errorf("Expected expression, got nothing")
+func (p *Parser) ParseExpressionStatement(token *lexer.Token) (ast.Statement, error) {
+	tokens, err := p.GetTokensUntil(";", false)
+	if err != nil {
+		return nil, err
 	}
+	// Create an array with the first token and the rest of the line
+	tokens = append([]*lexer.Token{token}, tokens...)
 	exp, tokens, err := p.ParseExpression(tokens)
 	if err != nil {
 		return nil, err
@@ -67,17 +94,17 @@ func (p *Parser) ParseExpressionStatement(tokens []*lexer.Token) (ast.Statement,
 // ParseDeclStatement will return a Statement from a set of tokens
 // It follows this grammar
 // <decl_statement> ::= "int" <id> [ = <exp> ] ";"
-func (p *Parser) ParseDeclStatement(tokens []*lexer.Token) (ast.Statement, error) {
-	tType, tokens := tokens[0], tokens[1:]
-	if tType.Type != lexer.IdentifierToken {
-		return nil, fmt.Errorf("Expected identifier, got '%s'", tType.Value)
+func (p *Parser) ParseDeclStatement(token *lexer.Token) (ast.Statement, error) {
+	tokens, err := p.GetTokensUntil(";", false)
+	if err != nil {
+		return nil, err
 	}
 	tName, tokens := tokens[0], tokens[1:]
 	if tName.Type != lexer.IdentifierToken {
 		return nil, fmt.Errorf("Expected identifier, got '%s'", tName.Value)
 	}
 	if len(tokens) == 0 {
-		return ast.NewDeclStatement(tType, tName, nil)
+		return ast.NewDeclStatement(token, tName, nil)
 	}
 	t, tokens := tokens[0], tokens[1:]
 	if string(t.Value) != "=" {
@@ -87,7 +114,105 @@ func (p *Parser) ParseDeclStatement(tokens []*lexer.Token) (ast.Statement, error
 	if err != nil {
 		return nil, err
 	}
-	return ast.NewDeclStatement(tType, tName, exp)
+	return ast.NewDeclStatement(token, tName, exp)
+}
+
+func (p *Parser) GetTokensBetween(start string, end string) ([]*lexer.Token, error) {
+	t, err := p.NextValidToken()
+	if err != nil {
+		return nil, err
+	}
+	if string(t.Value) != start {
+		return nil, fmt.Errorf("Expected '%s', got '%s'", start, t.Value)
+	}
+	tokens := make([]*lexer.Token, 0)
+	depth := 0
+	for {
+		t, err = p.NextValidToken()
+		if err != nil {
+			return nil, err
+		}
+		// Same as start, add to list, increase depth
+		if string(t.Value) == start {
+			tokens = append(tokens, t)
+			depth++
+		} else if string(t.Value) == end {
+			// Found end token, but maybe it's matching another start
+			if depth == 0 {
+				return tokens, nil
+			}
+			tokens = append(tokens, t)
+			depth--
+		} else {
+			tokens = append(tokens, t)
+		}
+	}
+}
+
+func (p *Parser) ParseIfStatement() (ast.Statement, error) {
+	tokens, err := p.GetTokensBetween("(", ")")
+	if err != nil {
+		return nil, err
+	}
+	exp, tokens, err := p.ParseExpression(tokens)
+	if err != nil {
+		return nil, err
+	}
+	t, err := p.NextValidToken()
+	if err != nil {
+		return nil, err
+	}
+	s, err := p.ParseStatement(t)
+	if err != nil {
+		return nil, err
+	}
+	stmt, err := ast.NewIfStatement(exp, s, nil)
+	if err != nil {
+		return nil, err
+	}
+	t, err = p.PeekNextValidToken()
+	if err != nil {
+		return nil, err
+	}
+	if string(t.Value) != "else" {
+		return stmt, nil
+	}
+	// Consume the "else" from the buffer
+	t, err = p.NextValidToken()
+	if err != nil {
+		return nil, err
+	}
+	// Get the real next token
+	t, err = p.NextValidToken()
+	if err != nil {
+		return nil, err
+	}
+	elseS, err := p.ParseStatement(t)
+	if err != nil {
+		return nil, err
+	}
+	stmt, err = ast.NewIfStatement(exp, s, elseS)
+	if err != nil {
+		return nil, err
+	}
+	return stmt, nil
+}
+
+func (p *Parser) ParseBlockItem(t *lexer.Token) (ast.Statement, error) {
+	switch string(t.Value) {
+	case "int":
+		s, err := p.ParseDeclStatement(t)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
+	default:
+		s, err := p.ParseStatement(t)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
 }
 
 // ParseStatement will return the correct Statement for the tokens to follow
@@ -95,45 +220,32 @@ func (p *Parser) ParseDeclStatement(tokens []*lexer.Token) (ast.Statement, error
 // Right now only return statements exists
 // <statement> ::= <return_statement>
 func (p *Parser) ParseStatement(t *lexer.Token) (ast.Statement, error) {
-	// Get all tokens
-	tokens, err := p.GetStatementTokens()
-	if err != nil {
-		return nil, err
-	}
-	// Merge the detection token with the received list
-	tokens = append([]*lexer.Token{t}, tokens...)
-	if len(tokens) == 0 {
-		return nil, fmt.Errorf("Could not parse statement, empty token list")
-	}
-	// Get first token to decide what type of statement this will be
-	t = tokens[0]
-	var stmt ast.Statement
-	if t.Type != lexer.IdentifierToken {
-		return nil, fmt.Errorf("Parse error, %s, %s", string(t.Value), t.Type)
-	}
-	id := string(t.Value)
-	if id == "return" {
-		// Return statement detected, remove the "return" token and parse the rest
-		tokens = tokens[1:]
-		s, err := p.ParseReturnStatement(tokens)
+	switch string(t.Value) {
+	case "{":
+		s, err := p.ParseBlockStatement()
 		if err != nil {
 			return nil, err
 		}
-		stmt = s
-	} else if id == "int" {
-		s, err := p.ParseDeclStatement(tokens)
+		return s, nil
+	case "if":
+		s, err := p.ParseIfStatement()
 		if err != nil {
 			return nil, err
 		}
-		stmt = s
-	} else {
-		s, err := p.ParseExpressionStatement(tokens)
+		return s, nil
+	case "return":
+		s, err := p.ParseReturnStatement(t)
 		if err != nil {
 			return nil, err
 		}
-		stmt = s
+		return s, nil
+	default:
+		s, err := p.ParseExpressionStatement(t)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
 	}
-	return stmt, nil
 }
 
 // ParseBlockStatement will return a statement list of all statements in a block
@@ -249,30 +361,59 @@ func (p *Parser) ParseFunction(token *lexer.Token) (ast.Statement, error) {
 	if t.Value[0] != '{' {
 		return nil, fmt.Errorf("Unexpected %s, expected {", string(t.Value))
 	}
-	// This will get the function body as a block statement
-	blockStmt, err := p.ParseBlockStatement()
+	stmts, err := ast.NewStatementList()
 	if err != nil {
 		return nil, err
 	}
-	fun, err := ast.NewFunctionStatement(nameToken, nil, token, blockStmt)
+	for {
+		t, err := p.NextValidToken()
+		if err != nil {
+			return nil, err
+		}
+		// Found the end of the function
+		if string(t.Value) == "}" {
+			break
+		}
+		// This will get the function body as a block statement
+		blockItem, err := p.ParseBlockItem(t)
+		if err != nil {
+			return nil, err
+		}
+		stmts, err = ast.AppendStatement(stmts, blockItem)
+		if err != nil {
+			return nil, err
+		}
+	}
+	body, err := ast.NewBlockStatement(stmts)
+	if err != nil {
+		return nil, err
+	}
+	fun, err := ast.NewFunctionStatement(nameToken, nil, token, body)
 	if err != nil {
 		return nil, fmt.Errorf("Error")
 	}
 	return fun, nil
 }
 
-// GetStatementTokens will read the valid tokens from the lexer until it finds a ";"
-func (p *Parser) GetStatementTokens() ([]*lexer.Token, error) {
+// GetTokensUntil will read the valid tokens from the lexer until it finds the token provided
+func (p *Parser) GetTokensUntil(val string, include bool) ([]*lexer.Token, error) {
 	tokens := make([]*lexer.Token, 0)
 	for {
 		t, err := p.NextValidToken()
 		if err != nil {
 			return nil, err
 		}
-		if string(t.Value) == ";" {
+		if string(t.Value) == val {
+			if include {
+				tokens = append(tokens, t)
+			}
 			break
 		}
 		tokens = append(tokens, t)
 	}
 	return tokens, nil
+}
+
+func (p *Parser) GetStatementTokens() ([]*lexer.Token, error) {
+	return p.GetTokensUntil(";", false)
 }

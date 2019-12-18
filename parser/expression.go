@@ -123,6 +123,10 @@ func (p *Parser) GetExpressionFromParser(parser ExpressionParser, tokens []*lexe
 	return exp, tokens, nil
 }
 
+func IsValidAssignOperator(op string) bool {
+	return op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/="
+}
+
 // ParseExpression parses the grammar as follow
 // <exp> ::= <id> "=" <exp> | <logical_or_exp>
 func (p *Parser) ParseExpression(tokens []*lexer.Token) (ast.Expression, []*lexer.Token, error) {
@@ -132,18 +136,18 @@ func (p *Parser) ParseExpression(tokens []*lexer.Token) (ast.Expression, []*lexe
 			// No more token, it's a lonely identifier
 			return p.ParseLogicalOrExpression(tokens)
 		}
-		tokens := tokens[1:]
-		tEq := tokens[0]
-		if string(tEq.Value) != "=" {
-			return nil, tokens, fmt.Errorf("Expected '=' got '%s'", tEq.Value)
+		tOp := tokens[1]
+		if !IsValidAssignOperator(string(tOp.Value)) {
+			// Not a valid assigment, must be an expression
+			return p.ParseLogicalOrExpression(tokens)
 		}
-		// consume the "="
-		tokens = tokens[1:]
+		// consume the identifier and operator
+		tokens = tokens[2:]
 		exp, tokens, err := p.ParseExpression(tokens)
 		if err != nil {
 			return nil, tokens, err
 		}
-		nextExp, err := ast.NewAssignExpression(tName, exp)
+		nextExp, err := ast.NewAssignExpression(tOp, tName, exp)
 		if err != nil {
 			return nil, tokens, err
 		}

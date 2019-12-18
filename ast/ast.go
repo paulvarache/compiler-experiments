@@ -27,6 +27,9 @@ func (bs BlockStatement) TokenLiteral() string { return "BlockStatement" }
 func (rs ReturnStatement) statementNode()       {}
 func (rs ReturnStatement) TokenLiteral() string { return "ReturnStatement" }
 
+func (is IfStatement) statementNode()       {}
+func (is IfStatement) TokenLiteral() string { return "IfStatement" }
+
 func (il IntegerLiteral) expressionNode()      {}
 func (il IntegerLiteral) TokenLiteral() string { return "IntegerLiteral" }
 
@@ -101,7 +104,11 @@ func NewDeclStatement(varType, left, right Attrib) (Statement, error) {
 	return stmt, nil
 }
 
-func NewAssignExpression(left, right Attrib) (Expression, error) {
+func NewAssignExpression(operator, left, right Attrib) (Expression, error) {
+	op, ok := operator.(*lexer.Token)
+	if !ok {
+		return nil, fmt.Errorf("NewAssignStatement", "*lexer.Token", "operator", operator)
+	}
 	l, ok := left.(*lexer.Token)
 	if !ok {
 		return nil, fmt.Errorf("NewAssignStatement", "*lexer.Token", "left", left)
@@ -110,7 +117,7 @@ func NewAssignExpression(left, right Attrib) (Expression, error) {
 	if !ok {
 		return nil, fmt.Errorf("NewAssignStatement", "Expression", "right", right)
 	}
-	return &AssignExpression{Token: l, Left: Identifier{Token: l, Value: string(l.Value)}, Right: r}, nil
+	return &AssignExpression{Token: l, Operator: string(op.Value), Left: Identifier{Token: l, Value: string(l.Value)}, Right: r}, nil
 }
 
 func NewIdentifier(id *lexer.Token) Expression {
@@ -183,4 +190,25 @@ func NewFunctionStatement(name, args, ret, block Attrib) (Statement, error) {
 		return nil, fmt.Errorf("NewFunctionStatement", "*lexer.Token", "ret", ret)
 	}
 	return &FunctionStatement{Name: string(n.Value), Body: b, Parameters: a, Return: string(r.Value)}, nil
+}
+
+func NewIfStatement(cond Attrib, body Attrib, elseBody Attrib) (Statement, error) {
+	c, ok := cond.(Expression)
+	if !ok {
+		return nil, fmt.Errorf("NewIfStatement", c)
+	}
+	b, ok := body.(Statement)
+	if !ok {
+		return nil, fmt.Errorf("NewIfStatement", b)
+	}
+	stmt := &IfStatement{Condition: c, Body: b}
+	if elseBody == nil {
+		return stmt, nil
+	}
+	e, ok := elseBody.(Statement)
+	if !ok {
+		return nil, fmt.Errorf("Fail")
+	}
+	stmt.ElseBody = e
+	return stmt, nil
 }
